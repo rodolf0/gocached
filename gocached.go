@@ -1,38 +1,39 @@
 package main
 
 import (
-  "fmt"
   "flag"
   "net"
-  "strconv"
-  "bufio"
+  "fmt"
 )
 
-var service_port = flag.Int("port", 11211, "memcached port")
-/*var max_memory = flag.Int("maxmem", 1024, "max MB to cache")*/
+var port = flag.String("port", "11211", "memcached port")
 
-////////////////////////////////////////////////////////////////
 
 func main() {
-
-  var addr, _ = net.ResolveTCPAddr("tcp", "0.0.0.0:" + strconv.Itoa(*service_port))
-  var listener, _ = net.ListenTCP("tcp", addr)
-
-  for {
-    var tcp_conn, _ = listener.AcceptTCP()
-    go connectionHandler(tcp_conn)
+  if addr, err := net.ResolveTCPAddr("tcp", "0.0.0.0:" + *port); err != nil {
+    panic("Unable to resolv local port: " + *port)
+  } else if listener, err := net.ListenTCP("tcp", addr); err != nil {
+    panic("Unable to listen on requested port")
+  } else {
+    for {
+      if conn, err := listener.AcceptTCP(); err != nil {
+        fmt.Println("An error ocurred accepting a connection")
+      } else {
+        go clientHandler(conn)
+      }
+    }
   }
 }
 
 
-func connectionHandler(tcp_conn *net.TCPConn) {
-  defer tcp_conn.Close()
+func clientHandler(conn *net.TCPConn) {
+  defer conn.Close()
 
-  reader := bufio.NewReader(tcp_conn)
-
-  for {
-    line, _, _ := reader.ReadLine()
-    tcp_conn.Write(line)
-    fmt.Println(string(line))
+  if session, err := NewSession(conn); err != nil {
+    fmt.Println("An error ocurred creating a session")
+  } else {
+    for {
+      session.NextCommand()
+    }
   }
 }
