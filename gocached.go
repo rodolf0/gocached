@@ -1,38 +1,62 @@
 package main
 
 import (
-  "fmt"
-  "flag"
-  "net"
-  "strconv"
-  "bufio"
+	"flag"
+	"net"
+	"strconv"
+	"os"
+	"log"
 )
 
-var service_port = flag.Int("port", 11211, "memcached port")
+var service_port = flag.Int("port", 11212, "memcached port")
 /*var max_memory = flag.Int("maxmem", 1024, "max MB to cache")*/
+
+var logger = log.New(os.Stdout, "", 0)
 
 ////////////////////////////////////////////////////////////////
 
 func main() {
+	
+  logger.Printf("Starting Gocached server")
 
-  var addr, _ = net.ResolveTCPAddr("tcp", "0.0.0.0:" + strconv.Itoa(*service_port))
-  var listener, _ = net.ListenTCP("tcp", addr)
+  addr, err := net.ResolveTCPAddr("tcp", "0.0.0.0:"+strconv.Itoa(*service_port))
+  assertNoError(err)
+  listener, err := net.ListenTCP("tcp", addr)
+  assertNoError(err)
+
+  logger.Printf("Listening on %s:%d", "0.0.0.0", *service_port)
 
   for {
-    var tcp_conn, _ = listener.AcceptTCP()
-    go connectionHandler(tcp_conn)
+    var tcp_conn, err = listener.AcceptTCP()
+      if err != nil {
+        continue
+      } else {
+        go connectionHandler(tcp_conn)
+      }
   }
 }
-
 
 func connectionHandler(tcp_conn *net.TCPConn) {
+
   defer tcp_conn.Close()
 
-  reader := bufio.NewReader(tcp_conn)
+  commandReader, _ := NewCommandReader(tcp_conn)
 
   for {
-    line, _, _ := reader.ReadLine()
-    tcp_conn.Write(line)
-    fmt.Println(string(line))
+    cmd, err := commandReader.Read()
+    if err != nil {
+      logger.Print("Connection closed by remote client")
+      return
+    }
+    if cmd != nil {
+      cmd.Exec()
+    }
   }
 }
+
+func assertNoError(err os.Error) {
+  if err != nil {
+    panic(err)
+  }
+}
+
