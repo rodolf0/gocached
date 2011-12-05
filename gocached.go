@@ -1,62 +1,44 @@
 package main
 
 import (
-	"flag"
-	"net"
-	"strconv"
-	"os"
+  "flag"
+  "os"
 	"log"
+  "net"
 )
 
-var service_port = flag.Int("port", 11212, "memcached port")
-/*var max_memory = flag.Int("maxmem", 1024, "max MB to cache")*/
-
-var logger = log.New(os.Stdout, "", 0)
-
-////////////////////////////////////////////////////////////////
+var logger = log.New(os.Stdout, "gocached: ", log.Lshortfile | log.LstdFlags)
+var port = flag.String("port", "11211", "memcached port")
 
 func main() {
-	
-  logger.Printf("Starting Gocached server")
-
-  addr, err := net.ResolveTCPAddr("tcp", "0.0.0.0:"+strconv.Itoa(*service_port))
-  assertNoError(err)
-  listener, err := net.ListenTCP("tcp", addr)
-  assertNoError(err)
-
-  logger.Printf("Listening on %s:%d", "0.0.0.0", *service_port)
-
-  for {
-    var tcp_conn, err = listener.AcceptTCP()
-      if err != nil {
-        continue
+  if addr, err := net.ResolveTCPAddr("tcp", "0.0.0.0:" + *port); err != nil {
+    logger.Fatalf("Unable to resolv local port %s\n", *port)
+  } else if listener, err := net.ListenTCP("tcp", addr); err != nil {
+    logger.Fatalln("Unable to listen on requested port")
+  } else {
+    logger.Printf("Starting Gocached server")
+    for {
+      if conn, err := listener.AcceptTCP(); err != nil {
+        logger.Println("An error ocurred accepting a new connection")
       } else {
-        go connectionHandler(tcp_conn)
+        go clientHandler(conn)
       }
-  }
-}
-
-func connectionHandler(tcp_conn *net.TCPConn) {
-
-  defer tcp_conn.Close()
-
-  commandReader, _ := NewCommandReader(tcp_conn)
-
-  for {
-    cmd, err := commandReader.Read()
-    if err != nil {
-      logger.Print("Connection closed by remote client")
-      return
-    }
-    if cmd != nil {
-      cmd.Exec()
     }
   }
 }
 
-func assertNoError(err os.Error) {
-  if err != nil {
-    panic(err)
+
+func clientHandler(conn *net.TCPConn) {
+  defer conn.Close()
+  if session, err := NewSession(conn); err != nil {
+    logger.Println("An error ocurred creating a new session")
+  } else {
+    for {
+      if cmd, err := session.NextCommand(); err == nil {
+        cmd.Exec(session)
+      } else {
+        logger.Println(err.String())
+      }
+    }
   }
 }
-

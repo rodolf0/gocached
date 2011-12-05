@@ -2,97 +2,139 @@ package main
 
 import (
   "os"
-  "io"
+  "net"
   "bufio"
   "strings"
-  "fmt"
   "strconv"
+  "regexp"
 )
 
-var MainStorage Storage = newMapStorage()
+var spaceMatcher, _ = regexp.Compile("  *")
 
-type CommandReader struct {
-  rd *bufio.Reader
-}
-
-func NewCommandReader(rd io.Reader) (*CommandReader, os.Error) {
-  cmd_reader := &CommandReader{}
-  cmd_reader.rd = bufio.NewReader(rd)
-  return cmd_reader, nil
+type Session struct {
+  conn      *net.TCPConn
+  bufreader *bufio.Reader
 }
 
 type Command interface {
-  Exec() (os.Error)
+  Exec(s *Session) os.Error
 }
+
+/*type CommandError interface {*/
+  /*String() string*/
+  /*Reply(io.Writer)*/
+/*}*/
 
 type StorageCommand struct {
-  command string
-  key string
-  flags uint32
-  exptime uint32
-  bytes uint32
-  cas_unique uint64
-  noreply bool
-  content []byte
+  command     string
+  key         string
+  flags       uint32
+  exptime     uint32
+  bytes       uint32
+  cas_unique  uint64
+  noreply     bool
+  data        []byte
 }
 
 
-func (self *StorageCommand) parseLine(line string) {
-    var params = strings.Split(line, " ")
-    
-    self.key = params[1]
-    if flags, err := strconv.Atoui(params[2]); err == nil { 
-      self.flags = uint32(flags)
-    }
-    if exptime, err := strconv.Atoui(params[3]); err == nil { 
-      self.exptime = uint32(exptime)
-    }
-    if bytes, err := strconv.Atoui(params[4]); err == nil { 
-      self.bytes = uint32(bytes)
-    }
-    if cas_unique, err := strconv.Atoui(params[5]); err == nil { 
-      self.cas_unique = uint64(cas_unique)
-    }
-    if len(params) == 7 {
-      if noreply, err := strconv.Atob(params[6]); err == nil { 
-        self.noreply = noreply
-      }
-    } else {
-      self.noreply = false
-    }
+func NewSession(conn *net.TCPConn) (*Session, os.Error) {
+  var s = new(Session)
+  s.conn = conn
+  s.bufreader = bufio.NewReader(conn)
+  return s, nil
 }
 
-func (self *StorageCommand) Exec() (err os.Error){
-    fmt.Printf("Storage: key: %s, flags: %d, exptime: %d, bytes: %d, cas: %d, noreply: %t, content: %s\n", 
-      self.key, self.flags, self.exptime, self.bytes, self.cas_unique, self.noreply, string(self.content))
-    return nil
-}
 
-type RetrievalCommand struct {
-  command string
-  key string
-}
-
-// TODO: contemplate the case when ReadLine can't fit a line into the buffer
-func (cr *CommandReader) Read() (Command, os.Error) {
-  if line, _, err := cr.rd.ReadLine(); err != nil || line == nil {
+func (s *Session) NextCommand() (Command, os.Error) {
+  var line []string
+  if rawline, _, err := s.bufreader.ReadLine(); err != nil {
     return nil, err
   } else {
-    var strLine = string(line)
-    var cmdline = strings.Split(strLine, " ")
-    if len(cmdline) < 1 {
-      return nil, os.NewError("Bad formed command")
-    }
-    switch cmdline[0] {
-    case "set":
-        storage := &StorageCommand{}
-        storage.parseLine(strLine)
-        storage.content = make([]byte, storage.bytes)
-        io.ReadFull(cr.rd, storage.content)
-        return storage, nil
-    }
+    line = strings.Split(spaceMatcher.ReplaceAllString(string(rawline), " "), " ")
   }
-  return nil, nil
+
+  switch line[0] {
+  case "set", "add", "replace", "append", "prepend", "cas":
+    command := new(StorageCommand)
+    if err := command.parse(line); err != nil {
+      return nil, err
+    } else if err := command.readData(s.bufreader); err != nil {
+      return nil, err
+    }
+    return command, nil
+
+  case "get", "gets":
+    /*command = new(RetrieveCommand)*/
+
+  case "delete":
+  case "incr", "decr":
+  case "touch":
+  case "stats":
+  case "flush_all":
+  case "version":
+  case "quit":
+  }
+
+  return nil, os.NewError("Unrecognized command: " + line[0])
 }
 
 
+func (sc *StorageCommand) parse(line []string) os.Error {
+  var flags, exptime, bytes, casuniq uint64
+  var err os.Error
+  if len(line) < 5 {
+    return os.NewError("Bad storage command: missing parameters")
+  } else if flags, err = strconv.Atoui64(line[2]); err != nil {
+    return os.NewError("Bad storage command: bad flags")
+  } else if exptime, err = strconv.Atoui64(line[3]); err != nil {
+    return os.NewError("Bad storage command: bad expiration time")
+  } else if bytes, err = strconv.Atoui64(line[4]); err != nil {
+    return os.NewError("Bad storage command: bad expiration time")
+  } else if line[0] == "cas" {
+    if casuniq, err = strconv.Atoui64(line[5]); err != nil {
+      return os.NewError("Bad storage command: bad cas value")
+    }
+  }
+  sc.command = line[0]
+  sc.key = line[1]
+  sc.flags = uint32(flags)
+  sc.exptime = uint32(exptime)
+  sc.bytes = uint32(bytes)
+  sc.cas_unique = casuniq
+  if line[len(line)-1] == "noreply" {
+    sc.noreply = true
+  }
+  return nil
+}
+
+
+func (sc *StorageCommand) readData(rd *bufio.Reader) os.Error {
+  if sc.bytes <= 0 {
+    return os.NewError("Bad storage operation: trying to read 0 bytes")
+  } else {
+    sc.data = make([]byte, sc.bytes + 2) // \r\n is always present at the end
+  }
+  // read all the data
+  for offset := 0; offset < int(sc.bytes); {
+    if nread, err := rd.Read(sc.data[offset:]); err != nil {
+      return err
+    } else {
+      offset += nread
+    }
+  }
+  if string(sc.data[len(sc.data)-2:]) != "\r\n" {
+    return os.NewError("CLIENT_ERROR: bad data chunk")
+  }
+  sc.data = sc.data[:len(sc.data)-2] // strip \n\r
+  return nil
+}
+
+
+func (sc *StorageCommand) Exec(s *Session) os.Error {
+  // TODO: call map storage functions
+  logger.Printf("Storage: key: %s, flags: %d, exptime: %d, " +
+                "bytes: %d, cas: %d, noreply: %t, content: %s\n",
+                sc.key, sc.flags, sc.exptime, sc.bytes,
+                sc.cas_unique, sc.noreply, string(sc.data))
+  return nil
+}

@@ -25,7 +25,7 @@ func newMapStorage() *MapStorage {
 
 func (self *MapStorage) Set(key string, flags uint32, exptime uint32, bytes uint32, content []byte) (err os.Error) {
   self.rwLock.Lock()
-  defer self.rwLock.Unlock() 
+  defer self.rwLock.Unlock()
   entry := self.storageMap[key]
   var newEntry *mapStorageEntry
   if entry != nil {
@@ -39,8 +39,8 @@ func (self *MapStorage) Set(key string, flags uint32, exptime uint32, bytes uint
 
 func (self *MapStorage) Add(key string, flags uint32, exptime uint32, bytes uint32, content []byte) (err os.Error) {
   self.rwLock.Lock()
-  defer self.rwLock.Unlock() 
-  
+  defer self.rwLock.Unlock()
+
   entry := self.storageMap[key]
   var newEntry *mapStorageEntry
   if entry != nil {
@@ -53,7 +53,7 @@ func (self *MapStorage) Add(key string, flags uint32, exptime uint32, bytes uint
 
 func (self *MapStorage) Replace(key string, flags uint32, exptime uint32, bytes uint32, content []byte) (err os.Error) {
   self.rwLock.Lock()
-  defer self.rwLock.Unlock() 
+  defer self.rwLock.Unlock()
   entry := self.storageMap[key]
   var newEntry *mapStorageEntry
   if entry != nil {
@@ -66,7 +66,7 @@ func (self *MapStorage) Replace(key string, flags uint32, exptime uint32, bytes 
 
 func (self *MapStorage) Append(key string, bytes uint32, content []byte) (err os.Error) {
   self.rwLock.Lock()
-  defer self.rwLock.Unlock() 
+  defer self.rwLock.Unlock()
   entry := self.storageMap[key]
   var newEntry *mapStorageEntry
   if entry != nil {
@@ -82,7 +82,7 @@ func (self *MapStorage) Append(key string, bytes uint32, content []byte) (err os
 
 func (self *MapStorage) Prepend(key string, bytes uint32, content []byte) (err os.Error) {
   self.rwLock.Lock()
-  defer self.rwLock.Unlock() 
+  defer self.rwLock.Unlock()
   entry := self.storageMap[key]
   var newEntry *mapStorageEntry
   if entry != nil {
@@ -99,7 +99,7 @@ func (self *MapStorage) Prepend(key string, bytes uint32, content []byte) (err o
 
 func (self *MapStorage) Cas(key string, flags uint32, exptime uint32, bytes uint32, cas_unique uint64, content []byte) (err os.Error) {
   self.rwLock.Lock()
-  defer self.rwLock.Unlock() 
+  defer self.rwLock.Unlock()
   entry := self.storageMap[key]
   var newEntry *mapStorageEntry
   if entry != nil {
@@ -116,7 +116,7 @@ func (self *MapStorage) Cas(key string, flags uint32, exptime uint32, bytes uint
 
 func (self *MapStorage) Delete(key string) (flags uint32, bytes uint32, cas_unique uint64, content []byte, err os.Error) {
   self.rwLock.Lock()
-  defer self.rwLock.Unlock() 
+  defer self.rwLock.Unlock()
   entry := self.storageMap[key]
   if entry == nil {
     return 0, 0, 0, nil, os.NewError("Key not found")
@@ -127,7 +127,7 @@ func (self *MapStorage) Delete(key string) (flags uint32, bytes uint32, cas_uniq
 
 func (self *MapStorage) Incr(key string, value uint64, incr bool) (resultValue uint64, err os.Error) {
   self.rwLock.Lock()
-  defer self.rwLock.Unlock() 
+  defer self.rwLock.Unlock()
   entry := self.storageMap[key]
   if entry == nil {
     return 0, os.NewError("Key not found")
@@ -148,11 +148,10 @@ func (self *MapStorage) Incr(key string, value uint64, incr bool) (resultValue u
 
 func (self *MapStorage) Get(key string) (flags uint32, bytes uint32, cas_unique uint64, content []byte, err os.Error) {
   self.rwLock.RLock()
-  defer self.rwLock.RUnlock() 
+  defer self.rwLock.RUnlock()
   entry := self.storageMap[key]
   if entry == nil {
     return 0, 0, 0, nil, os.NewError("Key not found")
   }
   return entry.flags, entry.bytes, entry.cas_unique, entry.content, nil
 }
-
