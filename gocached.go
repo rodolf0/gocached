@@ -8,7 +8,7 @@ import (
 )
 
 var logger = log.New(os.Stdout, "gocached: ", log.Lshortfile | log.LstdFlags)
-var port = flag.String("port", "11211", "memcached port")
+var port = flag.String("port", "11212", "memcached port")
 
 func main() {
   if addr, err := net.ResolveTCPAddr("tcp", "0.0.0.0:" + *port); err != nil {
@@ -34,11 +34,7 @@ func clientHandler(conn *net.TCPConn) {
     logger.Println("An error ocurred creating a new session")
   } else {
     for {
-      if cmd, err := session.NextCommand(); err == nil {
-        cmd.Exec(session)
-      } else {
-        logger.Println(err.String())
-      }
+      session.NextCommand().Exec(session)
     }
   }
 }
