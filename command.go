@@ -20,11 +20,6 @@ type Command interface {
   Exec(s *Session) os.Error
 }
 
-/*type CommandError interface {*/
-  /*String() string*/
-  /*Reply(io.Writer)*/
-/*}*/
-
 type StorageCommand struct {
   command     string
   key         string
@@ -36,6 +31,18 @@ type StorageCommand struct {
   data        []byte
 }
 
+const (
+  NA = iota
+  UnkownCommand
+  ClientError
+  ServerError
+)
+
+type ErrCommand struct {
+  errtype     int
+  errdesc     string
+  os_err      os.Error
+}
 
 func NewSession(conn *net.TCPConn) (*Session, os.Error) {
   var s = new(Session)
@@ -45,10 +52,10 @@ func NewSession(conn *net.TCPConn) (*Session, os.Error) {
 }
 
 
-func (s *Session) NextCommand() (Command, os.Error) {
+func (s *Session) NextCommand() Command {
   var line []string
   if rawline, _, err := s.bufreader.ReadLine(); err != nil {
-    return nil, err
+    return &ErrCommand{NA, "", err}
   } else {
     line = strings.Split(spaceMatcher.ReplaceAllString(string(rawline), " "), " ")
   }
@@ -57,11 +64,11 @@ func (s *Session) NextCommand() (Command, os.Error) {
   case "set", "add", "replace", "append", "prepend", "cas":
     command := new(StorageCommand)
     if err := command.parse(line); err != nil {
-      return nil, err
+      return &ErrCommand{ClientError, "bad command line format", err}
     } else if err := command.readData(s.bufreader); err != nil {
-      return nil, err
+      return &ErrCommand{ClientError, "bad data chunk", err}
     }
-    return command, nil
+    return command
 
   case "get", "gets":
     /*command = new(RetrieveCommand)*/
@@ -75,9 +82,29 @@ func (s *Session) NextCommand() (Command, os.Error) {
   case "quit":
   }
 
-  return nil, os.NewError("Unrecognized command: " + line[0])
+  return &ErrCommand{UnkownCommand, "",
+                     os.NewError("Unkown command: " + line[0])}
 }
 
+////////////////////////////// ERROR COMMANDS //////////////////////////////
+
+func (e *ErrCommand) Exec(s *Session) os.Error {
+  var msg string
+  switch e.errtype {
+  case UnkownCommand: msg = "ERROR\r\n"
+  case ClientError: msg = "CLIENT_ERROR " + e.errdesc + "\r\n"
+  case ServerError: msg = "SERVER_ERROR " + e.errdesc + "\r\n"
+  }
+  if e.os_err != nil {
+    logger.Println(e.os_err)
+  }
+  if _, err := s.conn.Write([]byte(msg)); err != nil {
+    return err
+  }
+  return nil
+}
+
+///////////////////////////// STORAGE COMMANDS /////////////////////////////
 
 func (sc *StorageCommand) parse(line []string) os.Error {
   var flags, exptime, bytes, casuniq uint64
@@ -123,7 +150,7 @@ func (sc *StorageCommand) readData(rd *bufio.Reader) os.Error {
     }
   }
   if string(sc.data[len(sc.data)-2:]) != "\r\n" {
-    return os.NewError("CLIENT_ERROR: bad data chunk")
+    return os.NewError("Bad storage operation: bad data chunk")
   }
   sc.data = sc.data[:len(sc.data)-2] // strip \n\r
   return nil
