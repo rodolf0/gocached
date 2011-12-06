@@ -7,6 +7,7 @@ import (
   "strings"
   "strconv"
   "regexp"
+  "fmt"
 )
 
 var spaceMatcher, _ = regexp.Compile("  *")
@@ -14,6 +15,7 @@ var spaceMatcher, _ = regexp.Compile("  *")
 type Session struct {
   conn      *net.TCPConn
   bufreader *bufio.Reader
+  storage Storage
 }
 
 type Command interface {
@@ -31,6 +33,11 @@ type StorageCommand struct {
   data        []byte
 }
 
+type RetrievalCommand struct {
+  command  string
+  keys     []string
+}
+
 const (
   NA = iota
   UnkownCommand
@@ -45,12 +52,9 @@ type ErrCommand struct {
 }
 
 func NewSession(conn *net.TCPConn) (*Session, os.Error) {
-  var s = new(Session)
-  s.conn = conn
-  s.bufreader = bufio.NewReader(conn)
+  var s = &Session{conn, bufio.NewReader(conn), newMapStorage()}
   return s, nil
 }
-
 
 func (s *Session) NextCommand() Command {
   var line []string
@@ -71,8 +75,11 @@ func (s *Session) NextCommand() Command {
     return command
 
   case "get", "gets":
-    /*command = new(RetrieveCommand)*/
-
+    command := new(RetrievalCommand)
+    if err := command.parse(line); err != nil {
+      return &ErrCommand{ClientError, "bad command line format", err}
+    }
+    return command
   case "delete":
   case "incr", "decr":
   case "touch":
@@ -103,6 +110,39 @@ func (e *ErrCommand) Exec(s *Session) os.Error {
   }
   return nil
 }
+
+///////////////////////////// RETRIEVAL COMMANDS ////////////////////////////
+
+
+func (sc *RetrievalCommand) parse(line []string) os.Error {
+  if len(line) < 2 {
+    return os.NewError("Bad retrieval command: missing parameters")
+  }
+  sc.command = line[0]
+  sc.keys = line[1:]
+  return nil
+}
+
+func (self *RetrievalCommand) Exec(s *Session) os.Error {
+  
+  logger.Printf("Retrieval: command: %s, keys: %s", self.command, self.keys)
+  showAll := self.command == "gets"
+  for i := 0; i < len(self.keys); i++ {
+    if flags, bytes, cas_unique, content, err := s.storage.Get(self.keys[i]); err != nil {
+      //Internal error. Just close the connection
+      s.conn.Close()
+    } else {
+      if showAll {
+        s.conn.Write([]byte(fmt.Sprintf("VALUE %s %d %d %d\r\n", self.keys[i], flags, bytes, cas_unique)))
+      } else {
+        s.conn.Write([]byte(fmt.Sprintf("VALUE %s %d %d\r\n", self.keys[i], flags, bytes)))
+      }
+      s.conn.Write(content)
+      s.conn.Write([]byte("\r\n"))   
+    }
+  }
+  return nil
+} 
 
 ///////////////////////////// STORAGE COMMANDS /////////////////////////////
 
@@ -158,10 +198,52 @@ func (sc *StorageCommand) readData(rd *bufio.Reader) os.Error {
 
 
 func (sc *StorageCommand) Exec(s *Session) os.Error {
-  // TODO: call map storage functions
   logger.Printf("Storage: key: %s, flags: %d, exptime: %d, " +
                 "bytes: %d, cas: %d, noreply: %t, content: %s\n",
                 sc.key, sc.flags, sc.exptime, sc.bytes,
                 sc.cas_unique, sc.noreply, string(sc.data))
+  
+  switch(sc.command) {
+
+  case "set":
+    if err := s.storage.Set(sc.key, sc.flags, sc.exptime, sc.bytes, sc.data) ; err != nil {
+      //This is an internal error. Connection should be closed by server.
+      s.conn.Close() 
+    } else if !sc.noreply {
+      s.conn.Write([]byte("STORED\r\n"))
+    }
+    return nil
+  case "add":
+    if err := s.storage.Add(sc.key, sc.flags, sc.exptime, sc.bytes, sc.data) ; err != nil && !sc.noreply {
+      s.conn.Write([]byte("NOT_STORED\r\n"))
+    } else if err == nil && !sc.noreply {
+      s.conn.Write([]byte("STORED\r\n"))
+    }
+  case "replace": 
+    if err := s.storage.Replace(sc.key, sc.flags, sc.exptime, sc.bytes, sc.data) ; err != nil && !sc.noreply {
+      s.conn.Write([]byte("NOT_STORED\r\n"))
+    } else if err == nil && !sc.noreply {
+      s.conn.Write([]byte("STORED\r\n"))
+    }
+  case "append":
+    if err := s.storage.Append(sc.key, sc.bytes, sc.data) ; err != nil && !sc.noreply {
+      s.conn.Write([]byte("NOT_STORED\r\n"))
+    } else if err == nil && !sc.noreply {
+      s.conn.Write([]byte("STORED\r\n"))
+    }
+  case "prepend":
+    if err := s.storage.Prepend(sc.key, sc.bytes, sc.data) ; err != nil && !sc.noreply {
+      s.conn.Write([]byte("NOT_STORED\r\n"))
+    } else if err == nil && !sc.noreply {
+      s.conn.Write([]byte("STORED\r\n"))
+    }
+  case "cas":
+    if err := s.storage.Cas(sc.key, sc.flags, sc.exptime, sc.bytes, sc.cas_unique, sc.data) ; err != nil && !sc.noreply {
+      //Fix this. We need special treatment for "exists" and "not found" error.
+      s.conn.Write([]byte("EXISTS\r\n"))
+    } else if err == nil && !sc.noreply {
+      s.conn.Write([]byte("STORED\r\n"))
+    }
+  }
   return nil
 }
