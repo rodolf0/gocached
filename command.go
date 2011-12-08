@@ -7,6 +7,7 @@ import (
   "strings"
   "strconv"
   "regexp"
+  "time"
 )
 
 var spaceMatcher, _ = regexp.Compile("  *")
@@ -24,7 +25,7 @@ type StorageCommand struct {
   command     string
   key         string
   flags       uint32
-  exptime     uint32
+  exptime     uint64
   bytes       uint32
   cas_unique  uint64
   noreply     bool
@@ -37,6 +38,8 @@ const (
   ClientError
   ServerError
 )
+
+const secondsInMonth = 60*60*24*30
 
 type ErrCommand struct {
   errtype     int
@@ -125,7 +128,11 @@ func (sc *StorageCommand) parse(line []string) os.Error {
   sc.command = line[0]
   sc.key = line[1]
   sc.flags = uint32(flags)
-  sc.exptime = uint32(exptime)
+  if exptime < secondsInMonth {
+    sc.exptime = time.Seconds() + exptime;
+  } else {
+    sc.exptime = exptime
+  }
   sc.bytes = uint32(bytes)
   sc.cas_unique = casuniq
   if line[len(line)-1] == "noreply" {
