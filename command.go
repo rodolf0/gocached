@@ -52,7 +52,7 @@ type ErrCommand struct {
 }
 
 func NewSession(conn *net.TCPConn) (*Session, os.Error) {
-  var s = &Session{conn, bufio.NewReader(conn), newMapStorage()}
+  var s = &Session{conn, bufio.NewReader(conn), newHashingStorage(100)}
   return s, nil
 }
 
@@ -141,6 +141,7 @@ func (self *RetrievalCommand) Exec(s *Session) os.Error {
       s.conn.Write([]byte("\r\n"))   
     }
   }
+  s.conn.Write([]byte("END\r\n"))   
   return nil
 } 
 
@@ -207,7 +208,7 @@ func (sc *StorageCommand) Exec(s *Session) os.Error {
 
   case "set":
     if err := s.storage.Set(sc.key, sc.flags, sc.exptime, sc.bytes, sc.data) ; err != nil {
-      //This is an internal error. Connection should be closed by server.
+      // This is an internal error. Connection should be closed by the server.
       s.conn.Close() 
     } else if !sc.noreply {
       s.conn.Write([]byte("STORED\r\n"))
@@ -239,7 +240,7 @@ func (sc *StorageCommand) Exec(s *Session) os.Error {
     }
   case "cas":
     if err := s.storage.Cas(sc.key, sc.flags, sc.exptime, sc.bytes, sc.cas_unique, sc.data) ; err != nil && !sc.noreply {
-      //Fix this. We need special treatment for "exists" and "not found" error.
+      //Fix this. We need special treatment for "exists" and "not found" errors.
       s.conn.Write([]byte("EXISTS\r\n"))
     } else if err == nil && !sc.noreply {
       s.conn.Write([]byte("STORED\r\n"))
