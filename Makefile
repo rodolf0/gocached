@@ -5,6 +5,7 @@ TARG = gocached
 GOFILES = \
 	gocached.go \
 	mapstorage.go \
+	hashingstorage.go \
 	command.go \
 	storage.go
 
