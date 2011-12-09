@@ -124,7 +124,7 @@ func (sc *RetrievalCommand) parse(line []string) os.Error {
 }
 
 func (self *RetrievalCommand) Exec(s *Session) os.Error {
-  
+
   logger.Printf("Retrieval: command: %s, keys: %s", self.command, self.keys)
   showAll := self.command == "gets"
   for i := 0; i < len(self.keys); i++ {
@@ -138,12 +138,12 @@ func (self *RetrievalCommand) Exec(s *Session) os.Error {
         s.conn.Write([]byte(fmt.Sprintf("VALUE %s %d %d\r\n", self.keys[i], flags, bytes)))
       }
       s.conn.Write(content)
-      s.conn.Write([]byte("\r\n"))   
+      s.conn.Write([]byte("\r\n"))
     }
   }
-  s.conn.Write([]byte("END\r\n"))   
+  s.conn.Write([]byte("END\r\n"))
   return nil
-} 
+}
 
 ///////////////////////////// STORAGE COMMANDS /////////////////////////////
 
@@ -203,13 +203,13 @@ func (sc *StorageCommand) Exec(s *Session) os.Error {
                 "bytes: %d, cas: %d, noreply: %t, content: %s\n",
                 sc.key, sc.flags, sc.exptime, sc.bytes,
                 sc.cas_unique, sc.noreply, string(sc.data))
-  
+
   switch(sc.command) {
 
   case "set":
     if err := s.storage.Set(sc.key, sc.flags, sc.exptime, sc.bytes, sc.data) ; err != nil {
       // This is an internal error. Connection should be closed by the server.
-      s.conn.Close() 
+      s.conn.Close()
     } else if !sc.noreply {
       s.conn.Write([]byte("STORED\r\n"))
     }
@@ -220,7 +220,7 @@ func (sc *StorageCommand) Exec(s *Session) os.Error {
     } else if err == nil && !sc.noreply {
       s.conn.Write([]byte("STORED\r\n"))
     }
-  case "replace": 
+  case "replace":
     if err := s.storage.Replace(sc.key, sc.flags, sc.exptime, sc.bytes, sc.data) ; err != nil && !sc.noreply {
       s.conn.Write([]byte("NOT_STORED\r\n"))
     } else if err == nil && !sc.noreply {
