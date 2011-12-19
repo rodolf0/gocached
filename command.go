@@ -17,7 +17,7 @@ type Session struct {
 }
 
 type Command interface {
-  Exec(s *Session) os.Error
+  Exec(s *Session)
 }
 
 type StorageCommand struct {
@@ -41,7 +41,6 @@ const (
 type ErrCommand struct {
   errtype     int
   errdesc     string
-  os_err      os.Error
 }
 
 func NewSession(conn *net.TCPConn) (*Session, os.Error) {
@@ -55,7 +54,7 @@ func NewSession(conn *net.TCPConn) (*Session, os.Error) {
 func (s *Session) NextCommand() Command {
   var line []string
   if rawline, _, err := s.bufreader.ReadLine(); err != nil {
-    return &ErrCommand{NA, "", err}
+    return nil
   } else {
     line = strings.Split(spaceMatcher.ReplaceAllString(string(rawline), " "), " ")
   }
@@ -64,9 +63,11 @@ func (s *Session) NextCommand() Command {
   case "set", "add", "replace", "append", "prepend", "cas":
     command := new(StorageCommand)
     if err := command.parse(line); err != nil {
-      return &ErrCommand{ClientError, "bad command line format", err}
+      /* non fatal error */
+      return &ErrCommand{ClientError, "bad command line format"}
     } else if err := command.readData(s.bufreader); err != nil {
-      return &ErrCommand{ClientError, "bad data chunk", err}
+      /* non fatal error */
+      return &ErrCommand{ClientError, "bad data chunk"}
     }
     return command
 
@@ -82,26 +83,20 @@ func (s *Session) NextCommand() Command {
   case "quit":
   }
 
-  return &ErrCommand{UnkownCommand, "",
-                     os.NewError("Unkown command: " + line[0])}
+  return &ErrCommand{UnkownCommand, line[0]}
 }
 
 ////////////////////////////// ERROR COMMANDS //////////////////////////////
 
-func (e *ErrCommand) Exec(s *Session) os.Error {
+func (e *ErrCommand) Exec(s *Session) {
   var msg string
   switch e.errtype {
   case UnkownCommand: msg = "ERROR\r\n"
   case ClientError: msg = "CLIENT_ERROR " + e.errdesc + "\r\n"
   case ServerError: msg = "SERVER_ERROR " + e.errdesc + "\r\n"
   }
-  if e.os_err != nil {
-    logger.Println(e.os_err)
-  }
-  if _, err := s.conn.Write([]byte(msg)); err != nil {
-    return err
-  }
-  return nil
+  logger.Println(msg)
+  s.conn.Write([]byte(msg))
 }
 
 ///////////////////////////// STORAGE COMMANDS /////////////////////////////
@@ -157,11 +152,10 @@ func (sc *StorageCommand) readData(rd *bufio.Reader) os.Error {
 }
 
 
-func (sc *StorageCommand) Exec(s *Session) os.Error {
+func (sc *StorageCommand) Exec(s *Session) {
   // TODO: call map storage functions
   logger.Printf("Storage: key: %s, flags: %d, exptime: %d, " +
                 "bytes: %d, cas: %d, noreply: %t, content: %s\n",
                 sc.key, sc.flags, sc.exptime, sc.bytes,
                 sc.cas_unique, sc.noreply, string(sc.data))
-  return nil
 }

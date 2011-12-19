@@ -33,8 +33,8 @@ func clientHandler(conn *net.TCPConn) {
   if session, err := NewSession(conn); err != nil {
     logger.Println("An error ocurred creating a new session")
   } else {
-    for {
-      session.NextCommand().Exec(session)
+    for cmd := session.NextCommand(); cmd != nil; cmd = session.NextCommand() {
+      cmd.Exec(session)
     }
   }
 }
