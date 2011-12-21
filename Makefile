@@ -7,6 +7,7 @@ GOFILES = \
 	mapstorage.go \
 	hashingstorage.go \
 	command.go \
+  generationalstorage.go \
 	storage.go
 
 include $(GOROOT)/src/Make.cmd

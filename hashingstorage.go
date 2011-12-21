@@ -14,9 +14,8 @@ type HashingStorage struct {
 
 func newHashingStorage(size uint32) *HashingStorage {
   s := &HashingStorage{size, hornerHasher, make([]Storage, size)}
-   
   for i := uint32(0); i < size; i++  {
-    s.storageBuckets[i] = newMapStorage()
+    s.storageBuckets[i] = newGenerationalStorage()
   }
   return s
 }

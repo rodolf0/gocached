@@ -39,6 +39,19 @@ type RetrievalCommand struct {
   keys     []string
 }
 
+type DeleteCommand struct {
+  command string
+  key string
+  noreply bool
+}
+
+type TouchCommand struct {
+  command string
+  key string
+  exptime uint32
+  noreply bool
+}
+
 const (
   NA = iota
   UnkownCommand
@@ -55,7 +68,7 @@ type ErrCommand struct {
 }
 
 func NewSession(conn *net.TCPConn) (*Session, os.Error) {
-  var s = &Session{conn, bufio.NewReader(conn), newHashingStorage(100)}
+  var s = &Session{conn, bufio.NewReader(conn), newHashingStorage(1)}
   return s, nil
 }
 
@@ -84,8 +97,18 @@ func (s *Session) NextCommand() Command {
     }
     return command
   case "delete":
+    command := new(DeleteCommand)
+    if err := command.parse(line); err != nil {
+      return &ErrCommand{ClientError, "bad command line format", err}
+    }
+    return command
   case "incr", "decr":
   case "touch":
+    command := new(TouchCommand)
+    if err := command.parse(line); err != nil {
+      return &ErrCommand{ClientError, "bad command line format", err}
+    }
+    return command
   case "stats":
   case "flush_all":
   case "version":
@@ -114,8 +137,60 @@ func (e *ErrCommand) Exec(s *Session) os.Error {
   return nil
 }
 
-///////////////////////////// RETRIEVAL COMMANDS ////////////////////////////
+///////////////////////////// TOUCH COMMAND //////////////////////////////
 
+func (self *TouchCommand) parse(line []string) os.Error {
+  var exptime uint64
+  var err os.Error
+  if len(line) < 3 {
+    return os.NewError("Bad touch command: missing parameters")
+  } else if exptime, err = strconv.Atoui64(line[2]); err != nil {
+    return os.NewError("Bad touch command: bad expiration time")
+  }
+
+  self.command = line[0]
+  self.key = line[1]
+  if exptime < secondsInMonth {
+    self.exptime = uint32(time.Seconds()) + uint32(exptime);
+  } else {
+    self.exptime = uint32(exptime)
+  }
+  if line[len(line)-1] == "noreply" {
+    self.noreply = true
+  }
+  return nil
+}
+
+func (self *TouchCommand) Exec(s *Session) os.Error {
+  logger.Printf("Touch: command: %s, key: %s, , exptime %d, noreply: %t", self.command, self.key, self.exptime, self.noreply)
+  return nil
+}
+
+///////////////////////////// DELETE COMMAND ////////////////////////////
+
+func (sc *DeleteCommand) parse(line []string) os.Error {
+  if len(line) < 2 {
+    return os.NewError("Bad delete command: missing parameters")
+  }
+  sc.command = line[0]
+  sc.key = line[1]
+  if line[len(line)-1] == "noreply" {
+    sc.noreply = true
+  }
+  return nil
+}
+
+func (self *DeleteCommand) Exec(s *Session) os.Error {
+  logger.Printf("Delete: command: %s, key: %s, noreply: %t", self.command, self.key, self.noreply)
+  if _, _,_,_,err := s.storage.Delete(self.key) ; err != nil && !self.noreply {
+    s.conn.Write([]byte("NOT_FOUND\r\n"))
+  } else if (err == nil && !self.noreply) {
+    s.conn.Write([]byte("DELETED\r\n"))
+  }
+  return nil
+}
+
+///////////////////////////// RETRIEVAL COMMANDS ////////////////////////////
 
 func (sc *RetrievalCommand) parse(line []string) os.Error {
   if len(line) < 2 {
@@ -131,10 +206,7 @@ func (self *RetrievalCommand) Exec(s *Session) os.Error {
   logger.Printf("Retrieval: command: %s, keys: %s", self.command, self.keys)
   showAll := self.command == "gets"
   for i := 0; i < len(self.keys); i++ {
-    if flags, bytes, cas_unique, content, err := s.storage.Get(self.keys[i]); err != nil {
-      //Internal error. Just close the connection
-      s.conn.Close()
-    } else {
+    if flags, bytes, cas_unique, content, err := s.storage.Get(self.keys[i]); err == nil {
       if showAll {
         s.conn.Write([]byte(fmt.Sprintf("VALUE %s %d %d %d\r\n", self.keys[i], flags, bytes, cas_unique)))
       } else {

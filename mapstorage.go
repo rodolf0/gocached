@@ -40,7 +40,6 @@ func (self *MapStorage) Set(key string, flags uint32, exptime uint32, bytes uint
 func (self *MapStorage) Add(key string, flags uint32, exptime uint32, bytes uint32, content []byte) (err os.Error) {
   self.rwLock.Lock()
   defer self.rwLock.Unlock()
-
   entry := self.storageMap[key]
   var newEntry *mapStorageEntry
   if entry != nil {
