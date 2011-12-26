@@ -6,8 +6,8 @@ package expiry
 // Each entry in the storage map has at least one entry with the same key and ttl in the queue, or it's in the expiry channel buffer. This holds for the 'current' entry value at any given time, including updates
 
 type Entry struct {
-	Exptime uint32
 	Key     *string
+	Exptime uint32
 }
 
 // The heap is implemented in an array, hence the type is an alias of Entry slice.
@@ -51,3 +51,8 @@ func (h *Heap) Pop() interface{} {
 	*h = (*h)[:last]
 	return ret
 }
+
+func (h Heap) Tip() Entry {
+  return h[0]
+}
+
