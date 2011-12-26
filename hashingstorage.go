@@ -12,13 +12,16 @@ type HashingStorage struct {
   storageBuckets []Storage
 }
 
-func newHashingStorage(size uint32) *HashingStorage {
+type StorageFactory func () Storage
+
+func newHashingStorage(size uint32, factory StorageFactory) *HashingStorage {
   s := &HashingStorage{size, hornerHasher, make([]Storage, size)}
   for i := uint32(0); i < size; i++  {
-    s.storageBuckets[i] = newGenerationalStorage()
+    s.storageBuckets[i] = factory()
   }
   return s
 }
+
 
 func (self *HashingStorage) Set(key string, flags uint32, exptime uint32, bytes uint32, content []byte) (err os.Error) { 
   return self.findBucket(key).Set(key, flags, exptime, bytes, content)
