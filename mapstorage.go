@@ -23,6 +23,10 @@ func newMapStorage() *MapStorage {
   return &MapStorage{make(map[string]*mapStorageEntry), new(sync.RWMutex)}
 }
 
+func (self *MapStorage) Init() {
+	self.storageMap = make(map[string]*mapStorageEntry)
+}
+
 func (self *MapStorage) Set(key string, flags uint32, exptime uint32, bytes uint32, content []byte) (err os.Error) {
   self.rwLock.Lock()
   defer self.rwLock.Unlock()
