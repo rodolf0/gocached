@@ -62,8 +62,8 @@ const (
   ServerError
 )
 
-func NewSession(conn *net.TCPConn) (*Session, os.Error) {
-  var s = &Session{conn, bufio.NewReader(conn), newHashingStorage(1)}
+func NewSession(conn *net.TCPConn, store Storage) (*Session, os.Error) {
+  var s = &Session{conn, bufio.NewReader(conn), store}
   return s, nil
 }
 
@@ -236,10 +236,10 @@ func (self *StorageCommand) parse(line []string) bool {
   self.command = line[0]
   self.key = line[1]
   self.flags = uint32(flags)
-  if exptime < secondsInMonth {
-    self.exptime = uint32(time.Seconds()) + uint32(exptime);
-  } else {
+  if exptime == 0 || exptime > secondsInMonth {
     self.exptime = uint32(exptime)
+  } else {
+    self.exptime = uint32(time.Seconds()) + uint32(exptime);
   }
   self.bytes = uint32(bytes)
   self.cas_unique = casuniq
