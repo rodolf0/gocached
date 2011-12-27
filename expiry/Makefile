@@ -3,18 +3,12 @@
 
 include $(GOROOT)/src/Make.inc
 
-TARG=gocached
+TARG=expiry
 GOFILES=\
-	command.go\
-	generationalstorage.go\
-	gocached.go\
-	hashingstorage.go\
-	heapexpiringstorage.go\
-	mapstorage.go\
-	storage.go\
+	heap.go\
 
 # gb: this is the local install
-GBROOT=.
+GBROOT=..
 
 # gb: compile/link against local install
 GCIMPORTS+= -I $(GBROOT)/_obj
@@ -28,16 +22,10 @@ endif
 GCIMPORTS+=-I $(subst $(GOPATHSEP),/pkg/$(GOOS)_$(GOARCH) -I , $(GOPATH))/pkg/$(GOOS)_$(GOARCH)
 LDIMPORTS+=-L $(subst $(GOPATHSEP),/pkg/$(GOOS)_$(GOARCH) -L , $(GOPATH))/pkg/$(GOOS)_$(GOARCH)
 
-# gb: default target is in GBROOT this way
-command:
-
-include $(GOROOT)/src/Make.cmd
-
 # gb: copy to local install
-$(GBROOT)/bin/$(TARG): $(TARG)
+$(GBROOT)/_obj/$(TARG).a: _obj/$(TARG).a
 	mkdir -p $(dir $@); cp -f $< $@
-command: $(GBROOT)/bin/$(TARG)
 
-# gb: local dependencies
-$(TARG): $(GBROOT)/_obj/expiry.a
+package: $(GBROOT)/_obj/$(TARG).a
 
+include $(GOROOT)/src/Make.pkg
