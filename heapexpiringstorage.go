@@ -19,7 +19,7 @@ type NotifyStorage struct {
 //Daemon that waits on two events. One triggers expired item recollection from the storage (timer). The other (bg) receives updates on exptime from storage.
 func (ns *NotifyStorage) ExpiringDaemon(freq int64) {
 	logger.Println("Collecting")
-	for timer := time.NewTicker(freq * 1000000);; {
+	for timer := time.NewTicker(freq * 1000000000);; {
 		select {
 		case <-timer.C:
 			ns.Collect()
@@ -112,7 +112,7 @@ func (self *MapStorage) MaybeExpire(key string, now uint32) bool {
 	if present && entry.exptime <= now {
 		logger.Printf("expiring key %v %+v at %v", key, entry, now)
 		self.rwLock.Lock()
-		self.storageMap[key] = &mapStorageEntry{}, false
+		self.storageMap[key] = mapStorageEntry{}, false
 		self.rwLock.Unlock()
 		return true
 	} else {
