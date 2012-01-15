@@ -14,7 +14,7 @@ import (
 type Session struct {
   conn      *net.TCPConn
   bufreader *bufio.Reader
-  storage Storage
+  storage CacheStorage
 }
 
 type Command interface {
@@ -62,7 +62,7 @@ const (
   ServerError
 )
 
-func NewSession(conn *net.TCPConn, store Storage) (*Session, os.Error) {
+func NewSession(conn *net.TCPConn, store CacheStorage) (*Session, os.Error) {
   var s = &Session{conn, bufio.NewReader(conn), store}
   return s, nil
 }
@@ -121,7 +121,7 @@ func Error(s *Session, errtype int, errdesc string) bool {
   case ClientError:   msg = "CLIENT_ERROR " + errdesc + "\r\n"
   case ServerError:   msg = "SERVER_ERROR " + errdesc + "\r\n"
   }
-  logger.Println(msg)
+ // logger.Println(msg)
   s.conn.Write([]byte(msg))
   return false
 }
@@ -171,13 +171,13 @@ func (self *DeleteCommand) parse(line []string) bool {
 }
 
 func (self *DeleteCommand) Exec() {
-  logger.Printf("Delete: command: %s, key: %s, noreply: %t",
-                self.command, self.key, self.noreply)
+//  logger.Printf("Delete: command: %s, key: %s, noreply: %t",
+//                self.command, self.key, self.noreply)
   var storage = self.session.storage
   var conn = self.session.conn
-  if _, _,_,_,err := storage.Delete(self.key) ; err != nil && !self.noreply {
+  if err, _ := storage.Delete(self.key) ; err != Ok && !self.noreply {
     conn.Write([]byte("NOT_FOUND\r\n"))
-  } else if (err == nil && !self.noreply) {
+  } else if (err == Ok && !self.noreply) {
     conn.Write([]byte("DELETED\r\n"))
   }
 }
@@ -194,19 +194,19 @@ func (self *RetrievalCommand) parse(line []string) bool {
 }
 
 func (self *RetrievalCommand) Exec() {
-  logger.Printf("Retrieval: command: %s, keys: %s",
-                self.command, self.keys)
+//  logger.Printf("Retrieval: command: %s, keys: %s",
+//                self.command, self.keys)
   var storage = self.session.storage
   var conn = self.session.conn
   showAll := self.command == "gets"
   for i := 0; i < len(self.keys); i++ {
-    if flags, bytes, cas_unique, content, err := storage.Get(self.keys[i]); err == nil {
+    if err, entry := storage.Get(self.keys[i]); err == Ok {
       if showAll {
-        conn.Write([]byte(fmt.Sprintf("VALUE %s %d %d %d\r\n", self.keys[i], flags, bytes, cas_unique)))
+        conn.Write([]byte(fmt.Sprintf("VALUE %s %d %d %d\r\n", self.keys[i], entry.flags, entry.bytes, entry.cas_unique)))
       } else {
-        conn.Write([]byte(fmt.Sprintf("VALUE %s %d %d\r\n", self.keys[i], flags, bytes)))
+        conn.Write([]byte(fmt.Sprintf("VALUE %s %d %d\r\n", self.keys[i], entry.flags, entry.bytes)))
       }
-      conn.Write(content)
+      conn.Write(entry.content)
       conn.Write([]byte("\r\n"))
     }
   }
@@ -249,7 +249,6 @@ func (self *StorageCommand) parse(line []string) bool {
   return self.readData()
 }
 
-
 /* read the data for a storage command and return a flag indicating success */
 func (self *StorageCommand) readData() bool {
   if self.bytes <= 0 {
@@ -273,55 +272,55 @@ func (self *StorageCommand) readData() bool {
   return true
 }
 
-
 func (self *StorageCommand) Exec() {
-  logger.Printf("Storage: key: %s, flags: %d, exptime: %d, " +
+/*  logger.Printf("Storage: key: %s, flags: %d, exptime: %d, " +
                 "bytes: %d, cas: %d, noreply: %t, content: %s\n",
                 self.key, self.flags, self.exptime, self.bytes,
                 self.cas_unique, self.noreply, string(self.data))
-
+*/
   var storage = self.session.storage
   var conn = self.session.conn
 
   switch self.command {
 
   case "set":
-    if err := storage.Set(self.key, self.flags, self.exptime, self.bytes, self.data) ; err != nil {
-      // This is an internal error. Connection should be closed by the server.
-      conn.Close()
-    } else if !self.noreply {
+    storage.Set(self.key, self.flags, self.exptime, self.bytes, self.data)
+    if !self.noreply {
       conn.Write([]byte("STORED\r\n"))
     }
     return
   case "add":
-    if err := storage.Add(self.key, self.flags, self.exptime, self.bytes, self.data); err != nil && !self.noreply {
+    if err, _ := storage.Add(self.key, self.flags, self.exptime, self.bytes, self.data); err != Ok && !self.noreply {
       conn.Write([]byte("NOT_STORED\r\n"))
-    } else if err == nil && !self.noreply {
+    } else if err == Ok && !self.noreply {
       conn.Write([]byte("STORED\r\n"))
     }
   case "replace":
-    if err := storage.Replace(self.key, self.flags, self.exptime, self.bytes, self.data) ; err != nil && !self.noreply {
+    if err, _, _ := storage.Replace(self.key, self.flags, self.exptime, self.bytes, self.data) ; err != Ok && !self.noreply {
       conn.Write([]byte("NOT_STORED\r\n"))
-    } else if err == nil && !self.noreply {
+    } else if err == Ok && !self.noreply {
       conn.Write([]byte("STORED\r\n"))
     }
   case "append":
-    if err := storage.Append(self.key, self.bytes, self.data) ; err != nil && !self.noreply {
+    if err, _, _ := storage.Append(self.key, self.bytes, self.data) ; err != Ok && !self.noreply {
       conn.Write([]byte("NOT_STORED\r\n"))
-    } else if err == nil && !self.noreply {
+    } else if err == Ok && !self.noreply {
       conn.Write([]byte("STORED\r\n"))
     }
   case "prepend":
-    if err := storage.Prepend(self.key, self.bytes, self.data) ; err != nil && !self.noreply {
+    if err, _, _ := storage.Prepend(self.key, self.bytes, self.data) ; err != Ok && !self.noreply {
       conn.Write([]byte("NOT_STORED\r\n"))
-    } else if err == nil && !self.noreply {
+    } else if err == Ok && !self.noreply {
       conn.Write([]byte("STORED\r\n"))
     }
   case "cas":
-    if err := storage.Cas(self.key, self.flags, self.exptime, self.bytes, self.cas_unique, self.data) ; err != nil && !self.noreply {
-      //Fix this. We need special treatment for "exists" and "not found" errors.
-      conn.Write([]byte("EXISTS\r\n"))
-    } else if err == nil && !self.noreply {
+    if err, prev, _ := storage.Cas(self.key, self.flags, self.exptime, self.bytes, self.cas_unique, self.data) ; err != Ok && !self.noreply {
+      if prev != nil {
+        conn.Write([]byte("EXISTS\r\n"))
+      } else {
+        conn.Write([]byte("NOT_STORED\r\n"))
+      }
+    } else if err == Ok && !self.noreply {
       conn.Write([]byte("STORED\r\n"))
     }
   }

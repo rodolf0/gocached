@@ -5,6 +5,7 @@ import (
 	"os"
 	"log"
 	"net"
+  "runtime"
 )
 
 //global logger
@@ -12,18 +13,22 @@ var logger = log.New(os.Stdout, "gocached: ", log.Lshortfile|log.LstdFlags)
 
 
 func main() {
-	var storage Storage
-	var factory StorageFactory
+	var storage CacheStorage
+	var factory CacheStorageFactory
 
+  runtime.GOMAXPROCS(2)
 	// command line flags and parsing
 	var port = flag.String("port", "11212", "memcached port")
-	var storage_choice = flag.String("storage", "generational",
-		"storage implementation (generational, heap, map)")
-	var expiring_frequency = flag.Int64("expiring-interval", 10,
-		"expiring interval in seconds")
-	var partitions = flag.Int("partitions", 10, "storage partitions (0 or 1 to disable)")
+
+  //	var storage_choice = flag.String("storage", "generational",
+//		"storage implementation (generational, heap, map)")
+//	var expiring_frequency = flag.Int64("expiring-interval", 10,
+//		"expiring interval in seconds")
+
+var partitions = flag.Int("partitions", 10, "storage partitions (0 or 1 to disable)")
 	flag.Parse()
 
+  /*
 	// storage implementation selection
 	switch *storage_choice {
 	case "map":
@@ -36,12 +41,19 @@ func main() {
 	default:
 		logger.Fatalln("Invalid storage selection")
 	}
-
+*/
 	// whether using partitioned or standalone storage
+
 	if *partitions > 1 {
-		storage = newHashingStorage(uint32(*partitions), factory)
+    logger.Printf("Building storage with partitioning support: %d slots", *partitions)
+    updatesChannel := make(chan UpdateMessage, 5000)
+    factory = func() CacheStorage { return newMapCacheStorage() }
+    //go updateMessageLogger(updatesChannel)
+    hashingStorage := newHashingStorage(uint32(*partitions), factory)
+    storage = newEventNotifierStorage(hashingStorage, updatesChannel)
+    newGenerationalStorage(hashingStorage, updatesChannel)
 	} else {
-		storage = factory()
+		storage = newMapCacheStorage()//factory()
 	}
 
 	// network setup
@@ -62,7 +74,7 @@ func main() {
   }
 }
 
-func clientHandler(conn *net.TCPConn, store Storage) {
+func clientHandler(conn *net.TCPConn, store CacheStorage) {
 	defer conn.Close()
 	if session, err := NewSession(conn, store); err != nil {
 		logger.Println("An error ocurred creating a new session")

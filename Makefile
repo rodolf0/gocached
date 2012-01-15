@@ -12,6 +12,9 @@ GOFILES=\
 	heapexpiringstorage.go\
 	mapstorage.go\
 	storage.go\
+	eventnotifierstorage.go\
+	mapcachestorage.go\
+	cachestorage.go\
 
 # gb: this is the local install
 GBROOT=.
