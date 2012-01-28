@@ -159,11 +159,14 @@ func (self *MapCacheStorage) Incr(key string, value uint64, incr bool) (ErrorCod
 	return KeyNotFound, nil, nil
 }
 
+/* keep a null object for map deletion */
+var nullStorageEntry = &StorageEntry{}
+
 func (self *MapCacheStorage) Expire(key string) {
 	self.rwLock.Lock()
 	defer self.rwLock.Unlock()
   _, present := self.storageMap[key]
 	if present {
-		self.storageMap[key] = &StorageEntry{}, false
+		self.storageMap[key] = nullStorageEntry, false
 	}
 }

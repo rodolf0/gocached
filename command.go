@@ -6,7 +6,6 @@ import (
   "bufio"
   "strings"
   "strconv"
-  "regexp"
   "time"
   "fmt"
 )
@@ -68,13 +67,10 @@ func NewSession(conn *net.TCPConn, store CacheStorage) (*Session, os.Error) {
 }
 
 
-/* match more than one space */
-var spaceMatcher, _ = regexp.Compile("  *")
-
 /* Read a line and tokenize it */
 func getTokenizedLine(r *bufio.Reader) []string {
   if rawline, _, err := r.ReadLine(); err == nil {
-    return strings.Split(spaceMatcher.ReplaceAllString(string(rawline), " "), " ")
+    return strings.Fields(string(rawline))
   }
   return nil
 }
