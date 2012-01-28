@@ -5,8 +5,8 @@ import (
 	"os"
 	"log"
 	"net"
-  "runtime"
-  "runtime/pprof"
+  /*"runtime"*/
+  /*"runtime/pprof"*/
 )
 
 //global logger
@@ -17,10 +17,10 @@ func main() {
 	var storage CacheStorage
 	var factory CacheStorageFactory
 
-  runtime.GOMAXPROCS(2)
+  /*runtime.GOMAXPROCS(1)*/
 	// command line flags and parsing
 	var port = flag.String("port", "11212", "memcached port")
-  var memprofile = flag.String("memprofile", "", "write memory profile to this file")
+  /*var memprofile = flag.String("memprofile", "", "write memory profile to this file")*/
 
   //	var storage_choice = flag.String("storage", "generational",
 //		"storage implementation (generational, heap, map)")
@@ -31,16 +31,16 @@ var partitions = flag.Int("partitions", 10, "storage partitions (0 or 1 to disab
 	flag.Parse()
 
 
-  if *memprofile != "" {
-    defer func() {
-      f, err := os.Create(*memprofile)
-      if err != nil {
-        log.Fatal(err)
-      }
-      pprof.WriteHeapProfile(f)
-      f.Close()
-    }()
-  }
+  /*if *memprofile != "" {*/
+    /*defer func() {*/
+      /*f, err := os.Create(*memprofile)*/
+      /*if err != nil {*/
+        /*log.Fatal(err)*/
+      /*}*/
+      /*pprof.WriteHeapProfile(f)*/
+      /*f.Close()*/
+    /*}()*/
+  /*}*/
 
   /*
 	// storage implementation selection
@@ -78,7 +78,8 @@ var partitions = flag.Int("partitions", 10, "storage partitions (0 or 1 to disab
 	} else {
     // server loop
     logger.Printf("Starting Gocached server")
-    for i := 0; i < 21; i++ {
+    /*for i := 0; i < 21; i++ {*/
+    for {
       if conn, err := listener.AcceptTCP(); err != nil {
         logger.Println("An error ocurred accepting a new connection")
       } else {
